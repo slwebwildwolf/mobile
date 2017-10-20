@@ -12,14 +12,31 @@ import {
   StatusBar,
   ToolbarAndroid,
   Platform,
-  BackAndroid
+  BackAndroid,
+  AsyncStorage,
+  RefreshControl,
+  Keyboard,
+  Animated,
+  FlatList
 } from 'react-native';
+//const dbClient = require('./dbClient');
+//const client = require('./client');
+//var SQLite = require('react-native-sqlite-storage');
+//SQLite.DEBUG(true);
+//SQLite.enablePromise(false);
 
-var SQLite = require('react-native-sqlite-storage');
-const client = require('./client');
+const AnimatedFlatList = Animated.createAnimatedComponent(FlatList);
 const ds = new ListView.DataSource({rowHasChanged: (r1, r2) => r1 !== r2});
 import ActionButton from 'react-native-action-button';
 let listener=null
+var STORAGE_KEY = '@Note:val';
+var moment = require('moment');
+let realm = require('./dbClient');
+const VIEWABILITY_CONFIG = {
+  minimumViewTime: 3000,
+  viewAreaCoveragePercentThreshold: 100,
+  waitForInteraction: true,
+};
 
 class notesList extends Component {
   static propTypes = {
@@ -29,109 +46,100 @@ class notesList extends Component {
   constructor(props) {
     super(props);
     this.state = {
-      dataSource: ds.cloneWithRows([])
+      data: realm.objects('Note').sorted('updated',true),
+      refreshing: false,
     };
-
     this._navigate = this._navigate.bind(this);
-    this.handleBackButton = this.handleBackButton.bind(this);
+    //this._pressRow = this._pressRow.bind(this);
   }
-  componentWillMount(){
-    console.log("mount list");
-    if(Platform.OS == "android" && listener == null){
-      listener = BackAndroid.addEventListener('hardwareBackPress',this.handleBackButton);
-    }
-    this.loadNote();
+  componentDidMount(){
+    Keyboard.addListener('keyboardWillShow',(e) => {
+      this._onRefresh();
+    });
   }
   componentWillUnmount(){
-    console.log("unmount list");
+    //console.log("unmount list");
     BackAndroid.removeEventListener('hardwareBackPress',this.handleBackButton);
-  }
-  successDB(){
-
-  }
-  errorDB(){
-
+    Keyboard.removeAllListeners('keyboardWillShow');
   }
   handleBackButton(){
     BackAndroid.exitApp();
   }
-  loadNote(){
-    var db = SQLite.openDatabase({name:'mydb.db',location:'default'},this.successDB,this.errorDB);
-    var sql = 'SELECT * FROM NOTES ORDER BY CREATED DESC';
-    db.transaction((tx) => {
-      tx.executeSql(sql,[],(tx,results) => {
-          let len = results.rows.length;
-          let notes = [];
-          for(let i=0;i<len;i++){
-            notes.push(results.rows.item(i));
-          }
-          this.setState({dataSource: ds.cloneWithRows(notes)});
-      });
-    });
-
+  _onRefresh(){
+    this.setState({data: realm.objects('Note').sorted('created',true)});
   }
   render(){
     return (
       <View style={styles.container}>
-        <StatusBar
-          backgroundColor = 'rgb(63,43,37)'
-          barStyle = 'light-content' />
-        <ToolbarAndroid
-          title={this.props.title}
-          style={styles.toolbar}
-          actions={toolbarActions}
-          color="#ffffff"
-          onActionSelected={this.onActionSelected}>
-        </ToolbarAndroid>
-        <ListView
-          style={styles.container}
-          dataSource = {this.state.dataSource}
-          renderRow = {this._renderRow.bind(this)}
-          renderSeparator={this._renderSeparator}
-          enableEmptySections
-        />
-        <ActionButton
-          buttonColor="rgb(63,43,37)"
-          onPress = {this._navigate}
-          offsetX={20}
-          offsetY={20} >
-        </ActionButton>
+          <StatusBar
+            backgroundColor = 'rgb(63,43,37)'
+            barStyle = 'light-content' />
+          <ToolbarAndroid
+            title={this.props.title}
+            style={styles.toolbar}
+            actions={toolbarActions}
+            color="#ffffff"
+            onActionSelected={this.onActionSelected}>
+          </ToolbarAndroid>
+          <AnimatedFlatList
+            style={styles.flatlist}
+            data={this.state.data}
+            renderItem={this._renderRow}
+            enableEmptySections
+            ItemSeparatorComponent={this._renderSeparator}
+            keyExtractor={(item, index) => item.id}
+            refreshControl={ <RefreshControl
+                  refreshing={this.state.refreshing}
+                  onRefresh={this._onRefresh.bind(this)} />}
+            viewabilityConfig={VIEWABILITY_CONFIG} />
+          <ActionButton
+            buttonColor="rgb(63,43,37)"
+            onPress = {this._navigate}
+            offsetX={20}
+            offsetY={20} >
+          </ActionButton>
       </View>
     );
   }
-  _renderRow(data: string, sectionId: number, rowId: number, highlightRow: (sectionId: number, rowId: number) => void){
+  _renderRow({item}){
     return(
-      <TouchableNativeFeedback style={styles.touchStyle} onPress= {this._pressRow}>
+      <TouchableNativeFeedback
+          onPress={this._pressRow}
+          background={TouchableNativeFeedback.SelectableBackground()} >
         <View style={styles.rowStyle}>
-            <Text style={styles.contentStyle}>{data.content.substring(0,50)}</Text>
-            <Text style={styles.dateStyle}>{data.created.substring(0,10)}</Text>
+            <Text style={styles.contentStyle}>{item.content.substring(0,50)}</Text>
+            <Text style={styles.dateStyle}>{moment(item.created).calendar()}</Text>
         </View>
       </TouchableNativeFeedback>
     );
   }
-  _renderSeparator(sectionId,rowId){
+  _renderSeparator(){
     return(
-      <View key={rowId} style={styles.separator} />
+      <View style={styles.separator} />
     );
   }
-  _genRows(pressData: {[key: number]: boolean}){
-    var dataBlob = [];
-    for (var ii = 0; ii < 100; ii++) {
-      var pressedText = pressData[ii] ? ' (pressed)' : '';
-      dataBlob.push('Row ' + ii + pressedText);
-    }
-    return dataBlob;
-  }
-  _pressRow(rowId: number){
-    Alert.alert('Alert',null,[
+  _pressRow(){
+    /*Alert.alert('Alert',null,[
       {text:"ok",onPress: () => console.log('OK')},
       {text:"cancel",onPress: () => console.log('Cancel')}
-    ]);
+    ]);*/
+    //shouldRefresh = true;
+    console.log(item);
+    /*this.props.navigator.push({
+      title: "Scene1",
+      id: item.id
+    });*/
+    //this._navigate(++rowId);
   }
   _navigate(){
+    //shouldRefresh = true;
     this.props.navigator.push({
-      title: "Scene1"
+      title: "Scene1",
+      id: 0
     });
+  }
+  _longPress(){
+    console.log('Long Press');
   }
 }
 
@@ -146,17 +154,17 @@ var toolbarActions = [
 const styles = StyleSheet.create({
   container:{
     flex: 1,
-    backgroundColor: 'rgb(238,233,215)'
+    backgroundColor: 'rgb(255,255,255)'
+  },
+  flatlist:{
+    flex: 1
+
   },
   toolbar: {
     backgroundColor: 'rgb(63,43,37)',
     height: 50,
     shadowColor: 'rgb(255,0,0)',
     elevation: 5
-  },
-
-  touchStyle: {
-    margin: 10
   },
   titleStyle: {
     fontSize: 18,
@@ -174,7 +182,6 @@ const styles = StyleSheet.create({
     flex: 0.1
   },
   separator: {
-    flex: 1,
     height: StyleSheet.hairlineWidth,
     backgroundColor: '#8E8E8E',
   },

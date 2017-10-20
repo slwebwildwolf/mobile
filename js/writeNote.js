@@ -6,126 +6,81 @@ import {
   View,
   Alert,
   TextInput,
-  DatePickerAndroid,
   Image,
   Button,
   BackAndroid,
   Platform,
-  StatusBar
+  StatusBar,
+  Keyboard
 } from 'react-native';
-var SQLite = require('react-native-sqlite-storage');
-const client = require('./client');
+//var SQLite = require('react-native-sqlite-storage');
+//SQLite.DEBUG(true);
+//SQLite.enablePromise(false);
+//const client = require('./client');
+//const dbClient = require('./dbClient');
 var moment = require('moment');
-let listener=null
-var db;
+let listener=null;
+let realm = require('./dbClient');
 
 class writeNote extends Component {
-  showPicker = async(stateKey, options) => {
-    try{
-      var newState = {};
-      const {action, year, month, day} = await DatePickerAndroid.open(options);
-      if (action === DatePickerAndroid.dismissedAction) {
-          newState[stateKey + 'Text'] = 'dismissed';
-      } else {
-          var date = new Date(year, month, day);
-          newState[stateKey + 'Text'] = date.toLocaleDateString();
-          newState[stateKey + 'Date'] = date;
-      }
-      this.setState(newState);
-    } catch({code,message}){
-      console.warn(`Error in example '${stateKey}': `, message);
-    }
-  };
   static propTypes = {
     title: PropTypes.string.isRequired,
+    id: PropTypes.number.isRequired,
     navigator: PropTypes.object.isRequired
   }
   constructor(props,context) {
     super(props,context);
     this.state = {
       content: "",
-      date: "hello",
-      presetDate: new Date(),
-      presetText: moment().format('MMM DD')
+      date: moment().format('MMM DD')
     };
-    db = SQLite.openDatabase({name:'mydb.db',location:'default'},this.successDB,this.errorDB);
     this.handleBackButton = this.handleBackButton.bind(this);
   }
   componentWillMount(){
-    console.log("mount");
-    if(Platform.OS == "android" && listener == null){
+    if(Platform.OS == "android"){
       listener = BackAndroid.addEventListener('hardwareBackPress',this.handleBackButton);
     }
-    //this.loadNote();
-
+    if(this.props.id > 0)
+      this.loadNoteById(this.props.id);
   }
   componentWillUnmount(){
-    console.log("unmount");
+    //console.log("unmount");
     BackAndroid.removeEventListener('hardwareBackPress',this.handleBackButton);
   }
   handleBackButton = () => {
     if(this.state.content != ""){
-      this.saveNote();
+      if(this.props.id > 0){
+        this.updateNote(this.state.content,this.props.id);
+      }
+      else{
+        this.saveNote(this.state.content);
+      }
     }
     this.props.navigator.pop();
+    Keyboard.emit('keyboardWillShow',null);
     return true;
   }
-  successDB(){
-
-  }
-  errorDB(){
-
-  }
-  updateNote(){
-    var sql = 'UPDATE NOTES VALUES("' +this.state.content +'","'+moment().format()+'","'+moment().format()+'")';
-    db.transaction((tx) => {
-      tx.executeSql(sql,[],(tx,results) => {
-          console.log('Note saved');
-      });
+  updateNote(content,id){
+    realm.write(() => {
+      realm.create('Note',{id:id,content:content,updated:new Date()},true);
     });
   }
-  saveNote(){
-    //client.getRequest("note");
-    //client.postRequest("note",{title:'well seems!',content:'well seems to work!'});
-
-    var sql = 'INSERT INTO NOTES VALUES("' +this.state.content +'","'+moment().format()+'","'+moment().format()+'")';
-    db.transaction((tx) => {
-      tx.executeSql(sql,[],(tx,results) => {
-          console.log('Note saved');
-      });
+  saveNote(content){
+    realm.write(() => {
+      realm.create('Note',{id:realm.objects('Note').length + 1,content:content});
     });
   }
-  loadNote(){
-    var sql = 'SELECT * FROM NOTES';
-    db.transaction((tx) => {
-      tx.executeSql(sql,[],(tx,results) => {
-          let len = results.rows.length;
-          if(len == 0){
-            db.transaction((tx1) => {
-              var sql1 = 'CREATE TABLE NOTES(content VARCHAR,created timestamp,updated timestamp)';
-              tx1.executeSql(sql1,[],(tx1,results) => {
-                console.log('Table created');
-              });
-            });
-          }
-          else{
-            //for(let i=0;i<len;i++){
-              this.setState({content:results.rows.item(len-1).content});
-            //}
-          }
-      });
-    });
-
+  loadNoteById(id){
+    let note = realm.objects('Note').filtered('id='+id);
+    if(note.length > 0){
+      this.setState({content: note[0].content,date: moment(new Date(note[0].created)).format("MMM DD")});
+    }
   }
   render(){
     return (
       <View style={styles.pageStyle}>
-        <StatusBar
-          backgroundColor = 'rgb(63,43,37)'
-          barStyle = 'light-content' />
-        <Text style={styles.dateStyle}
-          onPress={this.showPicker.bind(this, 'preset', {date: this.state.presetDate,maxDate: new Date()})}>
-          {this.state.presetText}
+        <Text style={styles.dateStyle}>
+          {this.state.date}
         </Text>
         <TextInput
           style={styles.contentStyle}
@@ -151,7 +106,7 @@ const styles = StyleSheet.create({
       fontWeight: '900',
       fontSize: 16,
       marginTop: 10,
-      color: "#000"
+      color: "rgb(63,43,37)"
     },
     backgroundImage: {
       position: 'absolute'
@@ -164,6 +119,6 @@ const styles = StyleSheet.create({
       flex: 0.8,
       color: "#000"
     }
-  });
+});
 
-  module.exports = writeNote;
+module.exports = writeNote;

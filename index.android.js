@@ -28,7 +28,7 @@ export default class notesR extends Component {
       return <NotesList title="Notes" navigator={navigator} {...route.passProps} />
     }
     else if(route.title == 'Scene1'){
-      return <WriteNote title="New Note" navigator={navigator} {...route.passProps} />
+      return <WriteNote title="New Note" navigator={navigator} id={route.id} {...route.passProps} />
     }
   }
   render() {
